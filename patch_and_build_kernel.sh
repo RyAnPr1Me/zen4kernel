@@ -75,8 +75,8 @@ for option in \
 done
 
 # Finalize config
-make "${MAKE_FLAGS[@]}" olddefconfig
-
+make "${MAKE_FLAGS[@]}" localmodconfig
+make xconfig
 # Build the kernel
 make "${MAKE_FLAGS[@]}" -j"$(nproc --all)"
 
