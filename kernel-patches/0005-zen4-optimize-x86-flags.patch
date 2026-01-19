@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Performance Bot <perf@example.com>
+Date: Tue, 19 Jan 2026 00:00:00 +0000
+Subject: [PATCH] x86: Tune generic 64-bit build for Zen 4
+
+When not building with CONFIG_X86_NATIVE_CPU, default to -march=znver4 and
+-mtune=znver4 so generic x86_64 kernels are aggressively optimized for AMD
+Zen 4. Keep the native path unchanged and align Rust target flags with the
+same CPU tuning.
+
+---
+ arch/x86/Makefile | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/arch/x86/Makefile b/arch/x86/Makefile
+index 7f3f6406fc7f..2a8a1da14f65 100644
+--- a/arch/x86/Makefile
++++ b/arch/x86/Makefile
+@@ -168,8 +168,8 @@ ifdef CONFIG_X86_NATIVE_CPU
+ 	KBUILD_CFLAGS += -march=native
+ 	KBUILD_RUSTFLAGS += -Ctarget-cpu=native
+ else
+-	KBUILD_CFLAGS += -march=x86-64 -mtune=generic
+-	KBUILD_RUSTFLAGS += -Ctarget-cpu=x86-64 -Ztune-cpu=generic
+	KBUILD_CFLAGS += -march=znver4 -mtune=znver4
+	KBUILD_RUSTFLAGS += -Ctarget-cpu=znver4 -Ztune-cpu=znver4
+ endif
+
+ 	KBUILD_CFLAGS += -mno-red-zone
