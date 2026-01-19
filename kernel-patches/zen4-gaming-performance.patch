@@ -1,0 +1,203 @@
+From df9c8a1f1cabfd6dc49d06b32b4f692099ff7003 Mon Sep 17 00:00:00 2001
+From: Zen4 Optimizer <zen4@archlinux.local>
+Date: Mon, 19 Jan 2026 02:39:51 +0000
+Subject: [PATCH] Zen 4 + NVIDIA gaming performance optimizations
+
+Consolidates 10 aggressive performance patches for Arch Linux 6.18
+---
+ Makefile                               |  3 +++
+ arch/x86/kernel/cpu/amd.c              | 11 +++++++++++
+ block/mq-deadline.c                    |  4 ++--
+ drivers/acpi/processor_idle.c          |  2 +-
+ drivers/gpu/drm/scheduler/sched_main.c |  6 +++++-
+ drivers/pci/pcie/aspm.c                |  8 ++++++++
+ drivers/pci/probe.c                    |  8 ++++++++
+ drivers/usb/core/driver.c              |  7 ++++++-
+ init/Kconfig                           |  5 +++++
+ kernel/sched/fair.c                    |  3 ++-
+ net/ipv4/Kconfig                       |  2 +-
+ 11 files changed, 52 insertions(+), 7 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index a082a1d7c..20016edf7 100644
+--- a/Makefile
++++ b/Makefile
+@@ -588,6 +588,9 @@ KBUILD_CFLAGS += -std=gnu11
+ KBUILD_CFLAGS += -fshort-wchar
+ KBUILD_CFLAGS += -funsigned-char
+ KBUILD_CFLAGS += -fno-common
++# Zen 4 optimizations
++KBUILD_CFLAGS += -march=znver4 -mtune=znver4
++KBUILD_CFLAGS += -mavx512f -mavx512dq -mavx512bw -mavx512vl -mavx512vnni
+ KBUILD_CFLAGS += -fno-PIE
+ KBUILD_CFLAGS += -fno-strict-aliasing
+ 
+diff --git a/arch/x86/kernel/cpu/amd.c b/arch/x86/kernel/cpu/amd.c
+index 5d46709c5..fc5c10531 100644
+--- a/arch/x86/kernel/cpu/amd.c
++++ b/arch/x86/kernel/cpu/amd.c
+@@ -1020,6 +1020,17 @@ static void init_amd_zen3(struct cpuinfo_x86 *c)
+ 
+ static void init_amd_zen4(struct cpuinfo_x86 *c)
+ {
++	u64 hwcr;
++
++	/* Zen 4 cache prefetcher tuning for gaming */
++	if (!cpu_has(c, X86_FEATURE_HYPERVISOR)) {
++		/* Enable aggressive prefetching */
++		if (!rdmsrq_safe(MSR_K7_HWCR, &hwcr)) {
++			hwcr &= ~(1ULL << 13); /* Enable speculative loads */
++			wrmsrq_safe(MSR_K7_HWCR, hwcr);
++		}
++	}
++
+ 	if (!cpu_has(c, X86_FEATURE_HYPERVISOR))
+ 		msr_set_bit(MSR_ZEN4_BP_CFG, MSR_ZEN4_BP_CFG_SHARED_BTB_FIX_BIT);
+ 
+diff --git a/block/mq-deadline.c b/block/mq-deadline.c
+index 3e741d331..bb7db9747 100644
+--- a/block/mq-deadline.c
++++ b/block/mq-deadline.c
+@@ -27,8 +27,8 @@
+ /*
+  * See Documentation/block/deadline-iosched.rst
+  */
+-static const int read_expire = HZ / 2;  /* max time before a read is submitted. */
+-static const int write_expire = 5 * HZ; /* ditto for writes, these limits are SOFT! */
++static const int read_expire = HZ / 20;  /* Gaming: faster reads for low latency */
++static const int write_expire = HZ; /* Gaming: faster writes */
+ /*
+  * Time after which to dispatch lower priority requests even if higher
+  * priority requests are pending.
+diff --git a/drivers/acpi/processor_idle.c b/drivers/acpi/processor_idle.c
+index 4166090db..366832d9d 100644
+--- a/drivers/acpi/processor_idle.c
++++ b/drivers/acpi/processor_idle.c
+@@ -39,7 +39,7 @@
+ 
+ #define ACPI_IDLE_STATE_START	(IS_ENABLED(CONFIG_ARCH_HAS_CPU_RELAX) ? 1 : 0)
+ 
+-static unsigned int max_cstate __read_mostly = ACPI_PROCESSOR_MAX_POWER;
++static unsigned int max_cstate __read_mostly = 1; /* Gaming: limit to C1 */
+ module_param(max_cstate, uint, 0400);
+ static bool nocst __read_mostly;
+ module_param(nocst, bool, 0400);
+diff --git a/drivers/gpu/drm/scheduler/sched_main.c b/drivers/gpu/drm/scheduler/sched_main.c
+index c39f0245e..ba715a456 100644
+--- a/drivers/gpu/drm/scheduler/sched_main.c
++++ b/drivers/gpu/drm/scheduler/sched_main.c
+@@ -1313,7 +1313,11 @@ int drm_sched_init(struct drm_gpu_scheduler *sched, const struct drm_sched_init_
+ 	sched->ops = args->ops;
+ 	sched->credit_limit = args->credit_limit;
+ 	sched->name = args->name;
+-	sched->timeout = args->timeout;
++	/* Gaming optimization: reduce GPU scheduler latency */
++	if (args->timeout != MAX_SCHEDULE_TIMEOUT && args->timeout > msecs_to_jiffies(100))
++		sched->timeout = msecs_to_jiffies(100);
++	else
++		sched->timeout = args->timeout;
+ 	sched->hang_limit = args->hang_limit;
+ 	sched->timeout_wq = args->timeout_wq ? args->timeout_wq : system_wq;
+ 	sched->score = args->score ? args->score : &sched->_score;
+diff --git a/drivers/pci/pcie/aspm.c b/drivers/pci/pcie/aspm.c
+index cedea47a3..a8e522103 100644
+--- a/drivers/pci/pcie/aspm.c
++++ b/drivers/pci/pcie/aspm.c
+@@ -1117,6 +1117,14 @@ void pcie_aspm_init_link_state(struct pci_dev *pdev)
+ {
+ 	struct pcie_link_state *link;
+ 	int blacklist = !!pcie_aspm_sanity_check(pdev);
++	/* Gaming optimization: disable ASPM for GPUs and NVMe */
++	if (pdev->subordinate) {
++		struct pci_dev *child;
++		list_for_each_entry(child, &pdev->subordinate->devices, bus_list)
++			if ((child->class >> 8) == PCI_CLASS_DISPLAY_VGA ||
++			    (child->class >> 8) == PCI_CLASS_STORAGE_EXPRESS)
++				return;
++	}
+ 
+ 	if (!aspm_support_enabled)
+ 		return;
+diff --git a/drivers/pci/probe.c b/drivers/pci/probe.c
+index 9cd032dff..5181b0352 100644
+--- a/drivers/pci/probe.c
++++ b/drivers/pci/probe.c
+@@ -2181,6 +2181,14 @@ static void pci_configure_mps(struct pci_dev *dev)
+ 
+ 	if (!pci_is_pcie(dev))
+ 		return;
++	/* Gaming: maximize throughput for GPU and NVMe */
++	if ((dev->class >> 8) == PCI_CLASS_DISPLAY_VGA ||
++	    (dev->class >> 8) == PCI_CLASS_STORAGE_EXPRESS) {
++		pcie_set_mps(dev, 512);
++		pcie_set_readrq(dev, 4096);
++		return;
++	}
++
+ 
+ 	/* MPS and MRRS fields are of type 'RsvdP' for VFs, short-circuit out */
+ 	if (dev->is_virtfn)
+diff --git a/drivers/usb/core/driver.c b/drivers/usb/core/driver.c
+index d29edc7c6..8241f3424 100644
+--- a/drivers/usb/core/driver.c
++++ b/drivers/usb/core/driver.c
+@@ -403,7 +403,12 @@ static int usb_probe_interface(struct device *dev)
+ 	if (!lpm_disable_error)
+ 		usb_unlocked_enable_lpm(udev);
+ 
+-	usb_autosuspend_device(udev);
++	/* Gaming: disable autosuspend for HID devices (mice/keyboards) */
++	if (intf->cur_altsetting &&
++	    intf->cur_altsetting->desc.bInterfaceClass == USB_CLASS_HID)
++		usb_disable_autosuspend(udev);
++	else
++			usb_autosuspend_device(udev);
+ 	return error;
+ 
+  err:
+diff --git a/init/Kconfig b/init/Kconfig
+index cab3ad28c..75a2bda83 100644
+--- a/init/Kconfig
++++ b/init/Kconfig
+@@ -1534,6 +1534,11 @@ choice
+ 	prompt "Compiler optimization level"
+ 	default CC_OPTIMIZE_FOR_PERFORMANCE
+ 
++config CC_OPTIMIZE_FOR_PERFORMANCE_O3
++	bool "Optimize for performance (-O3)"
++	help
++	  Use -O3 for maximum performance on Zen 4 gaming systems.
++
+ config CC_OPTIMIZE_FOR_PERFORMANCE
+ 	bool "Optimize for performance (-O2)"
+ 	help
+diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
+index 5b7523242..6cb4f69e7 100644
+--- a/kernel/sched/fair.c
++++ b/kernel/sched/fair.c
+@@ -7847,7 +7847,8 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
+ 	/*
+ 	 * If the previous CPU is cache affine and idle, don't be stupid:
+ 	 */
+-	if (prev != target && cpus_share_cache(prev, target) &&
++	/* Zen 4: Prefer same L3 cache (CCX) for lower latency */
++	if (prev != target && cpus_share_cache(prev, target) && cpus_share_resources(prev, target) &&
+ 	    (available_idle_cpu(prev) || sched_idle_cpu(prev)) &&
+ 	    asym_fits_cpu(task_util, util_min, util_max, prev)) {
+ 
+diff --git a/net/ipv4/Kconfig b/net/ipv4/Kconfig
+index 12850a277..c6d470bf1 100644
+--- a/net/ipv4/Kconfig
++++ b/net/ipv4/Kconfig
+@@ -503,7 +503,7 @@ config TCP_CONG_CUBIC
+ 
+ config TCP_CONG_WESTWOOD
+ 	tristate "TCP Westwood+"
+-	default m
++	default y
+ 	help
+ 	  TCP Westwood+ is a sender-side only modification of the TCP Reno
+ 	  protocol stack that optimizes the performance of TCP congestion
+-- 
+2.52.0
+
