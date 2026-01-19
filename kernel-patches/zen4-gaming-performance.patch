@@ -7,7 +7,7 @@ Consolidates 10 aggressive performance patches for Arch Linux 6.18
 ---
  Makefile                               |  3 +++
  arch/x86/kernel/cpu/amd.c              | 11 +++++++++++
- block/mq-deadline.c                    |  4 ++--
+ block/mq-deadline.c                    |  2 +-
  drivers/acpi/processor_idle.c          |  2 +-
  drivers/gpu/drm/scheduler/sched_main.c |  6 +++++-
  drivers/pci/pcie/aspm.c                |  8 ++++++++
@@ -16,7 +16,7 @@ Consolidates 10 aggressive performance patches for Arch Linux 6.18
  init/Kconfig                           |  5 +++++
  kernel/sched/fair.c                    |  3 ++-
  net/ipv4/Kconfig                       |  2 +-
- 11 files changed, 52 insertions(+), 7 deletions(-)
+ 11 files changed, 51 insertions(+), 6 deletions(-)
 
 diff --git a/Makefile b/Makefile
 index a082a1d7c..20016edf7 100644
@@ -58,17 +58,16 @@ diff --git a/block/mq-deadline.c b/block/mq-deadline.c
 index 3e741d331..bb7db9747 100644
 --- a/block/mq-deadline.c
 +++ b/block/mq-deadline.c
-@@ -27,8 +27,8 @@
+@@ -27,7 +27,7 @@
  /*
-  * See Documentation/block/deadline-iosched.rst
-  */
+	* See Documentation/block/deadline-iosched.rst
+	*/
 -static const int read_expire = HZ / 2;  /* max time before a read is submitted. */
--static const int write_expire = 5 * HZ; /* ditto for writes, these limits are SOFT! */
 +static const int read_expire = HZ / 20;  /* Gaming: faster reads for low latency */
-+static const int write_expire = HZ; /* Gaming: faster writes */
+ static const int write_expire = HZ;     /* ditto for writes, these limits are SOFT! */
  /*
-  * Time after which to dispatch lower priority requests even if higher
-  * priority requests are pending.
+	* Time after which to dispatch lower priority requests even if higher
+	* priority requests are pending.
 diff --git a/drivers/acpi/processor_idle.c b/drivers/acpi/processor_idle.c
 index 4166090db..366832d9d 100644
 --- a/drivers/acpi/processor_idle.c
