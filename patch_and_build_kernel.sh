@@ -8,14 +8,32 @@ shopt -s nullglob
 PATCH_DIR="kernel-patches"
 KERNEL_DIR="linux"
 
+# Set default kernel version
+DEFAULT_KERNEL_VERSION="6.18.6"
+
 # Check if the kernel directory exists
 if [ ! -d "$KERNEL_DIR" ]; then
-  echo "[ERROR] Kernel source directory '$KERNEL_DIR' not found. Exiting."
-  exit 1
+  echo "[INFO] Kernel source directory '$KERNEL_DIR' not found. Attempting to download."
+
+  # Use provided version or default to 6.18
+  KERNEL_VERSION="${1:-$DEFAULT_KERNEL_VERSION}"
+  ARCHIVE_NAME="linux-$KERNEL_VERSION.tar.xz"
+  DOWNLOAD_URL="https://cdn.kernel.org/pub/linux/kernel/v${KERNEL_VERSION:0:1}.x/$ARCHIVE_NAME"
+
+  echo "[INFO] Downloading Linux kernel version $KERNEL_VERSION from $DOWNLOAD_URL"
+  if curl -o "$ARCHIVE_NAME" "$DOWNLOAD_URL"; then
+    echo "[INFO] Download successful. Extracting archive."
+    tar -xf "$ARCHIVE_NAME"
+    mv "linux-$KERNEL_VERSION" "$KERNEL_DIR"
+    rm "$ARCHIVE_NAME"
+  else
+    echo "[ERROR] Failed to download kernel source. Please check the version and try again."
+    exit 1
+  fi
 fi
 
 # Check if required tools are installed
-for tool in patch make; do
+for tool in patch make curl tar; do
   if ! command -v "$tool" >/dev/null 2>&1; then
     echo "[ERROR] Required tool '$tool' is not installed. Please install it and try again."
     exit 1
