@@ -35,32 +35,61 @@ for tool in patch make curl tar git; do
   fi
 done
 
-# Normalize patch naming: sequential 0001-... ordering by filename sort
-PATCHES_SORTED=($(ls -1 "$PATCH_DIR"/*.patch 2>/dev/null | sort))
-if [ ${#PATCHES_SORTED[@]} -eq 0 ]; then
+# Build explicit patch order to avoid conflicting hunks while leaving patch contents untouched
+PATCH_ORDER=(
+  "$PATCH_DIR/cachyos.patch"
+  "$PATCH_DIR/dkms-clang.patch"
+  "$PATCH_DIR/zen4-gaming-performance.patch"
+  "$PATCH_DIR/0001-XANMOD-x86-build-Prevent-generating-avx2-floating-po.patch"
+  "$PATCH_DIR/0001-ZEN-input-evdev-Use-call_rcu-when-detaching-client.patch"
+  "$PATCH_DIR/0001-netfilter-Add-netfilter-nf_tables-fullcone-support.patch"
+  "$PATCH_DIR/0001-prjc-cachy-lfbmq.patch"
+  "$PATCH_DIR/0001-sched-wait-Do-accept-in-LIFO-order-for-cache-efficie.patch"
+  "$PATCH_DIR/0001-tcp-Add-a-sysctl-to-skip-tcp-collapse-processing-whe.patch"
+  "$PATCH_DIR/0001-tcp_bbr-v3-update-TCP-bbr-congestion-control-module-.patch"
+  "$PATCH_DIR/0002-XANMOD-x86-build-Add-LLVM-polyhedral-loop-optimizer-.patch"
+  "$PATCH_DIR/0002-firmware-Enable-stateless-firmware-loading.patch"
+  "$PATCH_DIR/0003-XANMOD-kbuild-Add-SMS-based-software-pipelining-flag.patch"
+  "$PATCH_DIR/0003-locking-rwsem-spin-faster.patch"
+  "$PATCH_DIR/0004-drivers-initialize-ata-before-graphics.patch"
+  "$PATCH_DIR/0005-zen4-optimize-x86-flags.patch"
+  "$PATCH_DIR/0007-zen4-aggressive-optimizations.patch"
+  "$PATCH_DIR/0008-XANMOD-block-mq-deadline-Increase-write-priority-to-.patch"
+  "$PATCH_DIR/0011-XANMOD-blk-wbt-Set-wbt_default_latency_nsec-to-2msec.patch"
+  "$PATCH_DIR/0013-XANMOD-vfs-Decrease-rate-at-which-vfs-caches-are-rec.patch"
+  "$PATCH_DIR/0016-XANMOD-sched-autogroup-Add-kernel-parameter-and-conf.patch"
+)
+
+# Collect patches: first the preferred order that exist, then any remaining sorted
+PREFERRED_APPLY=()
+declare -A seen
+for p in "${PATCH_ORDER[@]}"; do
+  if [ -f "$p" ]; then
+    PREFERRED_APPLY+=("$p")
+    seen["$p"]=1
+  fi
+done
+
+EXTRA_PATCHES=($(ls -1 "$PATCH_DIR"/*.patch 2>/dev/null | sort))
+if [ ${#EXTRA_PATCHES[@]} -eq 0 ]; then
   echo "[ERROR] No patches found in $PATCH_DIR. Exiting."
   exit 1
 fi
 
-idx=1
-for patch_path in "${PATCHES_SORTED[@]}"; do
-  base=$(basename "$patch_path")
-  stem=${base#*-}
-  if [ "$stem" = "$base" ]; then
-    stem=$base
+APPLY_LIST=()
+APPLY_LIST+=("${PREFERRED_APPLY[@]}")
+for p in "${EXTRA_PATCHES[@]}"; do
+  if [ -z "${seen[$p]:-}" ]; then
+    APPLY_LIST+=("$p")
   fi
-  new_name=$(printf "%04d-%s" "$idx" "$stem")
-  if [ "$new_name" != "$base" ]; then
-    mv "$patch_path" "$PATCH_DIR/$new_name"
-    patch_path="$PATCH_DIR/$new_name"
-  fi
-  PATCHES_SORTED[$((idx-1))]="$patch_path"
-  idx=$((idx + 1))
 done
 
-# Apply patches in normalized order
+echo "[INFO] Patch application order:"
+printf '  - %s\n' "${APPLY_LIST[@]}"
+
+# Apply patches in the chosen order
 PATCH_COUNT=0
-for patch in "${PATCHES_SORTED[@]}"; do
+for patch in "${APPLY_LIST[@]}"; do
   echo "[INFO] Applying patch: $patch"
   if patch -p1 -d "$KERNEL_DIR" < "$patch"; then
     echo "[INFO] Patch $patch applied successfully."
