@@ -1,0 +1,34 @@
+# Kernel source and build artifacts
+linux/
+linux-*.tar.xz
+linux-*.tar.gz
+
+# Build directories
+build/
+*.o
+*.ko
+*.mod.c
+*.symvers
+*.order
+modules.builtin
+Module.markers
+
+# Compiled files
+*.a
+*.so
+*.elf
+vmlinux
+vmlinuz
+System.map
+bzImage
+zImage
+
+# Temporary files
+*.tmp
+*.log
+*.swp
+*~
+
+# Config backups
+.config.old
+.config.backup

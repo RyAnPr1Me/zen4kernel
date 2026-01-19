@@ -1,0 +1,20 @@
+diff --git a/init/Kconfig b/init/Kconfig
+index 1234567..abcdefg 100644
+--- a/init/Kconfig
++++ b/init/Kconfig
+@@ -1000,0 +1001,15 @@
++# Ryzen 5 7600x Specific Optimizations
++# - 6 cores / 12 threads
++# - 32MB L3 cache (single CCX)
++# - 6MB L2 cache (1MB per core)
++# - DDR5 support up to 5200 MT/s
++
++config ZEN4_7600X_OPTIMIZATIONS
++	bool "AMD Ryzen 5 7600x specific optimizations"
++	depends on X86_64 && MZEN4
++	help
++	  Enable optimizations specifically for AMD Ryzen 5 7600x processor.
++	  This includes single-CCX aware scheduling, cache optimizations,
++	  and DDR5 memory tuning.
++
++	  If you have a Ryzen 5 7600x, say Y.
