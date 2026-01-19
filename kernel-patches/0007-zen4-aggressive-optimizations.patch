@@ -1,0 +1,47 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Performance Bot <perf@example.com>
+Date: Tue, 19 Jan 2026 00:00:00 +0000
+Subject: [PATCH] x86: Add aggressive Zen4 optimization defaults
+
+Apply aggressive compiler flags for x86_64 builds tuned to AMD Zen 4 when the
+non-native path is used. All flags are guarded with cc-option so builds fall
+back safely if a flag is unsupported.
+
+Flags added:
+- O3
+- pipe
+- march=znver4 / mtune=znver4
+- flto=full
+- function/jump/loop alignment tweaks
+- devirtualize at ltrans
+- loop unrolling
+
+---
+ arch/x86/Makefile | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/arch/x86/Makefile b/arch/x86/Makefile
+index 2a8a1da14f65..8b6e8e2a5f3c 100644
+--- a/arch/x86/Makefile
++++ b/arch/x86/Makefile
+@@ -144,6 +144,16 @@ else
+ 	BITS := 64
+ 	UTS_MACHINE := x86_64
+ 	CHECKFLAGS += -D__x86_64__
++
++	# Aggressive optimization defaults for Zen 4
++	KBUILD_CFLAGS += $(call cc-option,-O3)
++	KBUILD_CFLAGS += $(call cc-option,-pipe)
++	KBUILD_CFLAGS += $(call cc-option,-march=znver4)
++	KBUILD_CFLAGS += $(call cc-option,-mtune=znver4)
++	KBUILD_CFLAGS += $(call cc-option,-flto=full)
++	KBUILD_CFLAGS += $(call cc-option,-falign-functions=32)
++	KBUILD_CFLAGS += $(call cc-option,-falign-jumps=1)
++	KBUILD_CFLAGS += $(call cc-option,-falign-loops=1)
++	KBUILD_CFLAGS += $(call cc-option,-fdevirtualize-at-ltrans)
++	KBUILD_CFLAGS += $(call cc-option,-funroll-loops)
+ 
+ 	KBUILD_AFLAGS += -m64
+ 	KBUILD_CFLAGS += -m64
+-- 
+2.43.0

@@ -40,9 +40,32 @@ for tool in patch make curl tar; do
   fi
 done
 
-# Apply patches
+# Normalize patch naming: sequential 0001-... ordering by filename sort
+PATCHES_SORTED=($(ls -1 "$PATCH_DIR"/*.patch 2>/dev/null | sort))
+if [ ${#PATCHES_SORTED[@]} -eq 0 ]; then
+  echo "[ERROR] No patches found in $PATCH_DIR. Exiting."
+  exit 1
+fi
+
+idx=1
+for patch_path in "${PATCHES_SORTED[@]}"; do
+  base=$(basename "$patch_path")
+  stem=${base#*-}
+  if [ "$stem" = "$base" ]; then
+    stem=$base
+  fi
+  new_name=$(printf "%04d-%s" "$idx" "$stem")
+  if [ "$new_name" != "$base" ]; then
+    mv "$patch_path" "$PATCH_DIR/$new_name"
+    patch_path="$PATCH_DIR/$new_name"
+  fi
+  PATCHES_SORTED[$((idx-1))]="$patch_path"
+  idx=$((idx + 1))
+done
+
+# Apply patches in normalized order
 PATCH_COUNT=0
-for patch in "$PATCH_DIR"/*.patch; do
+for patch in "${PATCHES_SORTED[@]}"; do
   echo "[INFO] Applying patch: $patch"
   if patch -p1 -d "$KERNEL_DIR" < "$patch"; then
     echo "[INFO] Patch $patch applied successfully."
@@ -70,8 +93,12 @@ else
   echo "[INFO] Using default GCC toolchain."
 fi
 
-# Add maximum optimization flags
-MAKE_FLAGS+=(CFLAGS="-O3 -march=native -mtune=native -flto -pipe" CXXFLAGS="-O3 -march=native -mtune=native -flto -pipe")
+# Absolute-max aggressive flags for Zen 4
+MAX_OPTS="-O3 -march=znver4 -mtune=znver4 -flto=full -pipe"
+MAX_OPTS+=" -falign-functions=32 -falign-jumps=1 -falign-loops=1"
+MAX_OPTS+=" -fdevirtualize-at-ltrans"
+
+MAKE_FLAGS+=(CFLAGS="$MAX_OPTS" CXXFLAGS="$MAX_OPTS" KCFLAGS="$MAX_OPTS")
 
 # Clean the kernel build environment
 make "${MAKE_FLAGS[@]}" clean
