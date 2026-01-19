@@ -10,17 +10,35 @@ KERNEL_DIR="linux"
 
 # Check if the kernel directory exists
 if [ ! -d "$KERNEL_DIR" ]; then
-  echo "Kernel source directory '$KERNEL_DIR' not found. Exiting."
+  echo "[ERROR] Kernel source directory '$KERNEL_DIR' not found. Exiting."
   exit 1
 fi
 
+# Check if required tools are installed
+for tool in patch make; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    echo "[ERROR] Required tool '$tool' is not installed. Please install it and try again."
+    exit 1
+  fi
+done
+
 # Apply patches
+PATCH_COUNT=0
 for patch in "$PATCH_DIR"/*.patch; do
-  echo "Applying patch: $patch"
-  patch -p1 -d "$KERNEL_DIR" < "$patch"
-  echo "Patch $patch applied successfully."
+  echo "[INFO] Applying patch: $patch"
+  if patch -p1 -d "$KERNEL_DIR" < "$patch"; then
+    echo "[INFO] Patch $patch applied successfully."
+    PATCH_COUNT=$((PATCH_COUNT + 1))
+  else
+    echo "[WARNING] Failed to apply patch $patch. Skipping."
+  fi
   echo
 done
+
+if [ "$PATCH_COUNT" -eq 0 ]; then
+  echo "[ERROR] No patches were applied. Exiting."
+  exit 1
+fi
 
 # Change to the kernel directory
 cd "$KERNEL_DIR"
@@ -29,6 +47,9 @@ cd "$KERNEL_DIR"
 MAKE_FLAGS=(LOCALVERSION=-orion)
 if command -v clang >/dev/null 2>&1 && command -v ld.lld >/dev/null 2>&1; then
   MAKE_FLAGS+=(LLVM=1 LLVM_IAS=1 LD=ld.lld CC=clang)
+  echo "[INFO] Using LLVM toolchain."
+else
+  echo "[INFO] Using default GCC toolchain."
 fi
 
 # Clean the kernel build environment
@@ -39,13 +60,16 @@ make "${MAKE_FLAGS[@]}" mrproper
 make "${MAKE_FLAGS[@]}" olddefconfig
 
 # Try to enable aggressive options when they exist; ignore if unavailable
-./scripts/config --disable LTO_NONE || true
-./scripts/config --enable LTO_CLANG || true
-./scripts/config --enable LTO_CLANG_FULL || true
-./scripts/config --disable LTO_CLANG_THIN || true
-./scripts/config --enable CC_OPTIMIZE_FOR_PERFORMANCE_O3 || true
-./scripts/config --enable CC_OPTIMIZE_FOR_PERFORMANCE || true
-./scripts/config --disable CC_OPTIMIZE_FOR_SIZE || true
+for option in \
+  "--disable LTO_NONE" \
+  "--enable LTO_CLANG" \
+  "--enable LTO_CLANG_FULL" \
+  "--disable LTO_CLANG_THIN" \
+  "--enable CC_OPTIMIZE_FOR_PERFORMANCE_O3" \
+  "--enable CC_OPTIMIZE_FOR_PERFORMANCE" \
+  "--disable CC_OPTIMIZE_FOR_SIZE"; do
+  ./scripts/config $option || echo "[WARNING] Failed to set kernel config option: $option"
+done
 
 # Finalize config
 make "${MAKE_FLAGS[@]}" olddefconfig
@@ -54,8 +78,12 @@ make "${MAKE_FLAGS[@]}" olddefconfig
 make "${MAKE_FLAGS[@]}" -j"$(nproc --all)"
 
 # Install modules and kernel
-sudo make "${MAKE_FLAGS[@]}" modules_install
-sudo make "${MAKE_FLAGS[@]}" install
+if sudo make "${MAKE_FLAGS[@]}" modules_install && sudo make "${MAKE_FLAGS[@]}" install; then
+  echo "[INFO] Kernel build and installation complete. Reboot your system to use the new kernel."
+else
+  echo "[ERROR] Kernel installation failed. Please check the logs."
+  exit 1
+fi
 
-# Notify the user
-echo "Kernel build and installation complete. Reboot your system to use the new kernel."
+# Summary
+echo "[INFO] Total patches applied: $PATCH_COUNT"
