@@ -100,11 +100,11 @@ else
     }
 fi
 
-# Apply Zen4-specific optimizations
+# Apply Zen4-specific optimizations to .config...
 echo "  Applying Zen4 optimizations to .config..."
 
-# Enable Zen4 processor support
-scripts/config --enable CONFIG_MZEN4
+# Enable Native AMD processor support (uses -march=native with znver4)
+scripts/config --enable CONFIG_MNATIVE_AMD
 scripts/config --disable CONFIG_GENERIC_CPU
 
 # Performance governor
