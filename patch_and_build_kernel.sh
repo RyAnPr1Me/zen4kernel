@@ -87,16 +87,24 @@ done
 echo "[INFO] Patch application order:"
 printf '  - %s\n' "${APPLY_LIST[@]}"
 
-# Apply patches in the chosen order
+# Apply patches in the chosen order with pre-checks to avoid reapplying/reversing
 PATCH_COUNT=0
 for patch in "${APPLY_LIST[@]}"; do
   echo "[INFO] Applying patch: $patch"
-  if patch -p1 -d "$KERNEL_DIR" < "$patch"; then
-    echo "[INFO] Patch $patch applied successfully."
-    PATCH_COUNT=$((PATCH_COUNT + 1))
+
+  if patch -p1 --dry-run -N -d "$KERNEL_DIR" < "$patch" >/dev/null 2>&1; then
+    if patch -p1 -N -d "$KERNEL_DIR" < "$patch"; then
+      echo "[INFO] Patch $patch applied successfully."
+      PATCH_COUNT=$((PATCH_COUNT + 1))
+    else
+      echo "[WARNING] Failed to apply patch $patch. Skipping."
+    fi
+  elif patch -p1 --dry-run -R -d "$KERNEL_DIR" < "$patch" >/dev/null 2>&1; then
+    echo "[INFO] Patch $patch already applied (reverse would succeed). Skipping."
   else
-    echo "[WARNING] Failed to apply patch $patch. Skipping."
+    echo "[WARNING] Patch $patch does not apply cleanly. Skipping."
   fi
+
   echo
 done
 
