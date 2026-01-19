@@ -52,6 +52,9 @@ else
   echo "[INFO] Using default GCC toolchain."
 fi
 
+# Add maximum optimization flags
+MAKE_FLAGS+=(CFLAGS="-O3 -march=native -mtune=native -flto -pipe" CXXFLAGS="-O3 -march=native -mtune=native -flto -pipe")
+
 # Clean the kernel build environment
 make "${MAKE_FLAGS[@]}" clean
 make "${MAKE_FLAGS[@]}" mrproper
