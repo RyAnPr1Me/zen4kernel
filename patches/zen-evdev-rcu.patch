@@ -1,0 +1,38 @@
+diff --git a/drivers/input/evdev.c b/drivers/input/evdev.c
+index 1234567..abcdefg 100644
+--- a/drivers/input/evdev.c
++++ b/drivers/input/evdev.c
+@@ -377,6 +377,16 @@ static void evdev_detach_client(struct evdev *evdev,
+ 		}
+ 	}
+ 	spin_unlock(&evdev->client_lock);
++}
++
++static void evdev_detach_client_rcu(struct rcu_head *head)
++{
++	struct evdev_client *client = container_of(head, struct evdev_client, rcu);
++	struct evdev *evdev = client->evdev;
++
++	evdev_detach_client(evdev, client);
++	evdev_close_device(evdev);
++	kfree(client);
+ }
+ 
+ static int evdev_release(struct inode *inode, struct file *file)
+@@ -385,11 +395,8 @@ static int evdev_release(struct inode *inode, struct file *file)
+ 	struct evdev *evdev = client->evdev;
+ 	unsigned int i;
+ 
+-	evdev_detach_client(evdev, client);
+-
+-	for (i = 0; i < EV_CNT; ++i)
+-		input_ff_flush(&evdev->handle, file);
+-
+-	evdev_close_device(evdev);
+-	kfree(client);
++	/* Use RCU to defer freeing client to avoid lock contention */
++	synchronize_rcu();
++	call_rcu(&client->rcu, evdev_detach_client_rcu);
+ 
+ 	return 0;
+ }
