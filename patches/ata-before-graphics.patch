@@ -1,0 +1,13 @@
+diff --git a/drivers/ata/libata-core.c b/drivers/ata/libata-core.c
+index 1234567..abcdefg 100644
+--- a/drivers/ata/libata-core.c
++++ b/drivers/ata/libata-core.c
+@@ -6500,7 +6500,7 @@ static void __exit ata_exit(void)
+ 	debugfs_remove(ata_debugfs_dir);
+ }
+ 
+-subsys_initcall(ata_init);
++fs_initcall(ata_init);
+ module_exit(ata_exit);
+ 
+ static DEFINE_RATELIMIT_STATE(ratelimit, HZ / 5, 1);
